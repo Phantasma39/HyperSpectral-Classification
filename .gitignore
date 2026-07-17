@@ -1,0 +1,22 @@
+# 数据 & 模型（太大，不上传）
+data/
+results/
+*.pth
+*.ckpt
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+.env
+
+# IDE
+.vscode/
+
+# PDF/PPTX (大文件)
+*.pdf
+*.pptx
+
+# 无关测试
+test.py
+check_env.py
