@@ -1,19 +1,19 @@
-# 数据 & 模型（太大，不上传）
-data/
-results/
+# 模型权重（太大）
 *.pth
 *.ckpt
+results/
 
 # Python
 __pycache__/
 *.pyc
 *.pyo
 .env
+.ipynb_checkpoints/
 
 # IDE
 .vscode/
 
-# PDF/PPTX (大文件)
+# PDF/PPTX
 *.pdf
 *.pptx
 

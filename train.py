@@ -144,7 +144,7 @@ def main(args):
     optimizer = optim.Adam(model.parameters(), lr=args.lr,
                            weight_decay=args.weight_decay)
     scheduler = optim.lr_scheduler.ReduceLROnPlateau(
-        optimizer, mode='min', factor=0.5, patience=10, verbose=True
+        optimizer, mode='min', factor=0.5, patience=10
     )
 
     best_model_wts = copy.deepcopy(model.state_dict())

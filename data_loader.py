@@ -3,8 +3,12 @@
 支持 Indian Pines, Pavia University, Houston 等数据集
 """
 import os
-import urllib.request
+import ssl
 import zipfile
+
+# 全局禁用 SSL 证书验证（学校网络环境兼容）
+ssl._create_default_https_context = ssl._create_unverified_context
+
 import scipy.io as sio
 import numpy as np
 from sklearn.decomposition import PCA
@@ -38,22 +42,47 @@ DATASET_URLS = {
 }
 
 
+# 数据文件可能的存放路径（自动搜索）
+DATA_SEARCH_DIRS = [
+    "./data",
+    "./HSI-SVM-master/Indian Pines",
+    "./HSI-SVM-master/data",
+    "../Indian Pines",
+]
+
+
+def find_data_file(filename):
+    """在多个可能路径中查找数据文件"""
+    for d in DATA_SEARCH_DIRS:
+        p = os.path.join(d, filename)
+        if os.path.exists(p):
+            return os.path.abspath(p)
+    return None
+
+
 def download_file(url, save_path):
-    """下载文件，带进度显示"""
+    """检查文件是否存在，不存在则给出手动下载指引"""
+    # 先尝试原始路径
     if os.path.exists(save_path):
         print(f"  文件已存在: {save_path}")
         return
 
-    print(f"  下载: {url}")
-    print(f"  保存到: {save_path}")
+    # 再尝试搜索其他路径
+    found = find_data_file(os.path.basename(save_path))
+    if found:
+        print(f"  文件已找到: {found}")
+        # 拷贝到目标位置
+        import shutil
+        os.makedirs(os.path.dirname(save_path), exist_ok=True)
+        if found != os.path.abspath(save_path):
+            shutil.copy2(found, save_path)
+            print(f"  已复制到: {save_path}")
+        return
 
-    def progress(block_num, block_size, total_size):
-        downloaded = block_num * block_size
-        percent = min(100, downloaded * 100 // total_size) if total_size > 0 else 0
-        print(f"\r  {percent}% ({downloaded}/{total_size})", end="", flush=True)
-
-    urllib.request.urlretrieve(url, save_path, progress)
-    print()
+    print(f"\n  ⚠ 文件缺失: {save_path}")
+    print(f"  请在以下链接手动下载，放到 ./data/ 目录下:")
+    print(f"    {url}")
+    raise FileNotFoundError(f"请先手动下载数据文件: {save_path}")
 
 
 def load_dataset(name="IndianPines", data_dir="./data"):

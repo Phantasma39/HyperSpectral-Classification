@@ -50,9 +50,10 @@ class ResidualBlock3D(nn.Module):
     """3D 残差块（含 SE 注意力可选）"""
     def __init__(self, in_ch, out_ch, kernel=(3, 3, 3), use_se=True):
         super().__init__()
-        self.conv1 = nn.Conv3d(in_ch, out_ch, kernel, padding=1)
+        padding = (kernel[0] // 2, kernel[1] // 2, kernel[2] // 2)
+        self.conv1 = nn.Conv3d(in_ch, out_ch, kernel, padding=padding)
         self.bn1 = nn.BatchNorm3d(out_ch)
-        self.conv2 = nn.Conv3d(out_ch, out_ch, kernel, padding=1)
+        self.conv2 = nn.Conv3d(out_ch, out_ch, kernel, padding=padding)
         self.bn2 = nn.BatchNorm3d(out_ch)
         self.se = SE3DLayer(out_ch) if use_se else nn.Identity()
 
@@ -248,14 +249,9 @@ class HybridSN_Res(nn.Module):
         self.classifier = nn.Linear(128, num_classes)
 
     def _calc_3d_output_size(self, C, S):
-        c1 = C - 7 + 1
-        c2 = c1 - 5 + 1
-        c3 = c2 - 3 + 1
-        s1 = S - 3 + 1
-        s2 = s1 - 3 + 1
-        s3 = s2 - 3 + 1
-        self.c2d_in = 32 * c3
-        self.fc_in = 64 * s3 * s3
+        # 残差块使用 padding 保持维度不变，所以 3D 卷积后维度同输入
+        self.c2d_in = 32 * C
+        self.fc_in = 64 * S * S
 
     def forward(self, x):
         x = x.unsqueeze(1)

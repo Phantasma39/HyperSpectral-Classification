@@ -139,6 +139,18 @@ python train.py \
 
 ---
 
+## 📊 实验结果
+
+### HybridSN 基线 (Indian Pines, 10 epochs)
+
+| 指标 | 值 |
+|------|-----|
+| Overall Accuracy (OA) | **99.32%** |
+| Average Accuracy (AA) | **99.56%** |
+| Kappa 系数 | **0.9922** |
+
+---
+
 ## 🔗 参考
 
 - [HybridSN 论文](https://ieeexplore.ieee.org/document/8736016) — Exploring 3-D–2-D CNN Feature Hierarchy for HSI Classification
