@@ -244,6 +244,79 @@ def apply_pca(data, n_components=30):
         return reduced
 
 
+def apply_lda(data, labels, n_components=None, pca_pre=100):
+    """
+    对 patches 数据应用 LDA (Linear Discriminant Analysis) 降维
+
+    先 PCA 到 pca_pre 维（压缩空间维度避免 OOM），再 LDA 到 n_components 维。
+    LDA 是有监督降维，需要标签信息，会找到类间/类内差异最大的投影方向，
+    使降维后不同类别尽量分开。
+
+    LDA 最多能降到 min(pca_pre, num_classes-1) 维。
+
+    参数:
+        data:   (N, H, W, C) patches
+        labels: (N,) 标签（0 ~ num_classes-1）
+        n_components: 最终 LDA 维度（默认 None = num_classes-1）
+        pca_pre:      先用 PCA 降维的空间维度数（默认 100）
+
+    返回:
+        降维后的 patches: (N, H, W, k)
+    """
+    from sklearn.discriminant_analysis import LinearDiscriminantAnalysis
+    shape = data.shape
+
+    if data.ndim != 4:
+        raise ValueError(f"apply_lda 要求 patches 为 4D: (N, H, W, C)，收到 {data.ndim}D")
+
+    N, H, W, C = shape
+    num_classes = len(np.unique(labels))
+
+    # 先 PCA 降维到低维空间，避免 OOM
+    pca_pre = min(pca_pre, H * W * C, N)
+    data_2d = data.reshape(N, -1).astype(np.float64)
+    pca = PCA(n_components=pca_pre)
+    data_pca = pca.fit_transform(data_2d)
+    print(f"  [LDA 第一步] PCA: {data_2d.shape[1]} → {pca_pre} 维度")
+
+    # 再 LDA
+    max_components = min(pca_pre, num_classes - 1)
+    if n_components is None:
+        n_components = max_components
+    n_components = min(n_components, max_components)
+
+    lda = LinearDiscriminantAnalysis(n_components=n_components)
+    reduced = lda.fit_transform(data_pca, labels)
+
+    print(f"  [LDA 第二步] LDA: {pca_pre} → {n_components} 维度"
+          f"（类别数={num_classes}）")
+
+    return reduced.reshape(N, H, W, n_components)
+
+
+def apply_dim_reduce(patches, labels=None, method="pca", n_components=30):
+    """
+    统一的降维接口，支持 PCA 和 LDA
+
+    参数:
+        patches:      (N, H, W, C)
+        labels:       (N,) — LDA 必需，PCA 忽略
+        method:       "pca" | "lda"
+        n_components: 降维后维度
+
+    返回:
+        降维后的 patches
+    """
+    if method == "pca":
+        return apply_pca(patches, n_components)
+    elif method == "lda":
+        if labels is None:
+            raise ValueError("LDA 需要 labels 参数")
+        return apply_lda(patches, labels, n_components)
+    else:
+        raise ValueError(f"不支持的降维方法: {method}，可选 'pca' 或 'lda'")
+
+
 # ==================== PyTorch Dataset ====================
 
 class HyperSpectralDataset(Dataset):

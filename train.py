@@ -15,7 +15,7 @@ from sklearn.metrics import (
     classification_report
 )
 
-from data_loader import load_dataset, create_patches, apply_pca, create_data_loaders, HyperSpectralDataset
+from data_loader import load_dataset, create_patches, apply_dim_reduce, create_data_loaders, HyperSpectralDataset
 from model import HybridSN, HybridSN_SE, HybridSN_Res
 from visualize import plot_data_overview, plot_training_results
 

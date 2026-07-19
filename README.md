@@ -139,6 +139,51 @@ reshape → 2D Conv → BN → ReLU → SE
 
 ## 📦 数据集说明
 
+### .mat 文件是怎么读取的？
+
+高光谱数据以 MATLAB `.mat` 格式存储。你可能好奇——"代码怎么知道文件里有什么变量、是什么形状？"
+
+**答案是逐个探查，然后硬编码 key 名。**
+
+每个 `.mat` 文件像一个 Python 字典，打开后看到所有的 key：
+
+```python
+import scipy.io
+# 打开文件
+d = scipy.io.loadmat("data/Indian Pines/Indian_pines_corrected.mat")
+# 看看有哪些变量（排除 __ 开头的内置变量）
+print([k for k in d if not k.startswith("__")])  # → ['indian_pines_corrected']
+
+# 取出数据
+data = d["indian_pines_corrected"]
+print(data.shape)  # → (145, 145, 200)  这就是 (H, W, C)
+print(data.dtype)  # → uint16
+```
+
+标签文件同理：
+
+```python
+g = scipy.io.loadmat("data/Indian Pines/Indian_pines_gt.mat")
+print([k for k in g if not k.startswith("__")])  # → ['indian_pines_gt']
+gt = g["indian_pines_gt"]
+print(gt.shape)                                  # → (145, 145)
+print(np.unique(gt))                              # → [0 1 2 3 ... 16]
+```
+
+**三个数据集的探查结果**：
+
+| 数据集 | 格式 | 数据 key | 数据形状 | 数据 dtype | 标签 key | 标签形状 | 标签 dtype |
+|--------|------|---------|---------|------------|---------|---------|------------|
+| Indian Pines | MATLAB v5 | `indian_pines_corrected` | (145, 145, 200) | uint16 | `indian_pines_gt` | (145, 145) | uint8 |
+| PaviaU | MATLAB v5 | `paviaU` | (610, 340, 103) | — | `paviaU_gt` | (610, 340) | — |
+| Houston | MATLAB v7.3 | `ori_data` | (48, 954, 210) | float | `map` | (954, 210) | float |
+
+> **注意**：Houston 是 v7.3 格式，scipy 读不了，必须用 `h5py.File()`。而且 v7.3 文件读出后维度是转置的（`(C, W, H)` 而不是 `(H, W, C)`），代码自动做了 `np.transpose` 修复。
+
+`load_dataset()` 函数就是用上面探查到的 key 名去取数据，再根据格式选择 scipy 还是 h5py 读取。
+
+---
+
 ### 三个经典高光谱数据集
 
 | 数据集 | 图像尺寸 | 波段数 | 类别数 | 标注像素 | 场景 |
@@ -225,6 +270,82 @@ python check_env.py
 | `create_patches(data, gt, 25)` | 图像+标签 → `(10249, 25, 25, C)` | 跳过背景、标签重映射为 0~N-1、返回每个像素的 (row, col) |
 | `apply_pca(patches, 30)` | `(N, H, W, 200)` → `(N, H, W, 30)` | PCA 降维 |
 | `create_data_loaders(...)` | patches + labels → 3 个 DataLoader + scaler | 分层采样 + StandardScaler + 类别权重计算 |
+
+#### PCA 和 LDA 两种降维方法的原理
+
+<details>
+<summary><b>点击展开：详细原理对比</b></summary>
+
+##### PCA（Principal Component Analysis，主成分分析）
+
+**一句话**：PCA 是**无监督**降维。它不看标签，只找数据本身方差最大的方向。
+
+**原理**：
+1. 把所有像素的光谱曲线画在 200 维空间里
+2. 找到"数据散得最开"的那个方向（第一主成分）
+3. 再找和第一主成分正交的方向里"散得最开"的（第二主成分）
+4. 重复，取前 30 个方向
+
+**直观理解**：假设数据是扁平的椭圆——PCA 找到椭圆的长轴和短轴，用它们代替原来的 x-y 坐标。
+
+**代码**：
+```python
+from sklearn.decomposition import PCA
+pca = PCA(n_components=30)
+reduced = pca.fit_transform(data_2d)  # 不需要标签
+print(pca.explained_variance_ratio_.sum())  # → 0.9981 (保留了99.81%的信息)
+```
+
+**Input**: `(10249, 25×25×200)` → **Output**: `(10249, 25×25×30)`
+
+**Pro**: 简单、快、保留信息多（200→30 只丢了 0.2% 的信息）
+
+**Con**: 不看标签，可能把"能区分不同类别"的方向丢掉
+
+##### LDA（Linear Discriminant Analysis，线性判别分析）
+
+**一句话**：LDA 是**有监督**降维。它需要标签，找的是"让不同类别尽量分开"的方向。
+
+**原理**：
+1. 已知每个样本属于哪个类别
+2. 找一个投影方向，使得投影后：
+   - **类间差异**（不同类别的均值距离）→ 越大越好
+   - **类内差异**（同类别内部的分散程度）→ 越小越好
+3. 最终结果：降维后不同类别的点聚成一团，团与团之间离得很远
+
+**限制**：LDA 最多只能降到 `类别数 - 1` 维（因为类间散度矩阵的秩有限）。16 类的 Indian Pines → 最多 15 维。
+
+**代码**：
+```python
+from sklearn.discriminant_analysis import LinearDiscriminantAnalysis
+# 先 PCA 到 100 维（压缩空间避免 OOM）
+pca = PCA(n_components=100)
+data_pca = pca.fit_transform(data_2d)
+# 再 LDA 到最终维数
+lda = LinearDiscriminantAnalysis(n_components=n_components)
+reduced = lda.fit_transform(data_pca, labels)  # 需要标签！
+```
+
+**为什么 LDA 在数据中要做两步（先 PCA 再 LDA）？**
+原始 patches 展平后是 `25×25×C` 维——以 Indian Pines 为例就是 `25×25×200 = 125,000` 维。
+这个维度远远超过可用内存（会导致 NumPy 申请 9.55 GiB 数组）。所以本项目实现中先用 PCA 降到
+100 维（中间维度），再在这个低维空间做 LDA。
+
+**Pro**: 利用标签信息，降维结果直接优化分类目标
+
+**Con**: 必须要有标签、最多降到 N类-1 维、直接对高维数据 OOM
+
+##### 两者对比
+
+| | PCA | LDA |
+|------|-----|-----|
+| 是否需要标签 | ❌ 不需要 | ✅ 需要 |
+| 目标 | 保留最多的信息（方差最大） | 让不同类别尽量分开 |
+| 最大维度 | 可以到原始维度 | 最多 `类别数 - 1` |
+| 计算量 | 小 | 大（需两步：PCA→LDA） |
+| 本项目用法 | `--reduce pca --pca 30` | `--reduce lda --pca 10` |
+
+</details>
 
 ---
 
