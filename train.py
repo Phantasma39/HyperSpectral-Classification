@@ -17,6 +17,7 @@ from sklearn.metrics import (
 
 from data_loader import load_dataset, create_patches, apply_pca, create_data_loaders
 from model import HybridSN, HybridSN_SE, HybridSN_Res
+from visualize import plot_data_overview, plot_training_results
 
 
 # ==================== 训练函数 ====================
@@ -90,7 +91,11 @@ def main(args):
 
     data, gt, _ = load_dataset(args.dataset, args.data_dir)
 
-    patches, labels, num_classes, label_map = create_patches(
+    # ---- 数据可视化 ----
+    fig_dir = os.path.join(args.output_dir, "figures")
+    plot_data_overview(data, gt, fig_dir)
+
+    patches, labels, num_classes, label_map, all_positions = create_patches(
         data, gt, window_size=args.window_size
     )
 
@@ -215,6 +220,11 @@ def main(args):
     print("=" * 55)
 
     os.makedirs(args.output_dir, exist_ok=True)
+
+    # ---- 训练结果可视化 ----
+    fig_dir = os.path.join(args.output_dir, "figures")
+    plot_training_results(history, cm, preds, gt, all_positions, num_classes,
+                          fig_dir)
 
     # 保存模型
     model_path = os.path.join(args.output_dir, f"{args.model}_{args.dataset}.pth")

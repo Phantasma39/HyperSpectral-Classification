@@ -199,7 +199,7 @@ def create_patches(data, gt, window_size=25, remove_zero_labels=True):
         count = np.sum(labels_new == new_lbl)
         print(f"    类别 {old_lbl} → {new_lbl}: {count} 个样本")
 
-    return patches, labels_new, num_classes, label_map
+    return patches, labels_new, num_classes, label_map, positions
 
 
 def apply_pca(data, n_components=30):
