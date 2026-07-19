@@ -18,7 +18,6 @@
 - [实验结果](#-实验结果)
 - [评估指标是什么意思？](#-评估指标是什么意思)
 - [项目结构](#-项目结构)
-- [HSI-SVM-master 参考项目](#-hsi-svm-master-参考项目)
 - [常见问题](#-常见问题)
 
 ---
@@ -638,31 +637,10 @@ python model.py
 │   ├── hybridsn_IndianPines.pth      ← 模型权重
 │   └── hybridsn_IndianPines_report.txt  ← 分类报告
 │
-├── HSI-SVM-master/         ← 参考项目（含数据和SVM方法）
-│   ├── Indian Pines/       ← **数据源**
-│   ├── Part_1/             ← PCA + 数据预处理
-│   ├── Part_2/             ← 双通道 CNN
-│   ├── Part_3/             ← CNN-SVM 融合
-│   └── Part_4/
-│
 ├── .gitignore
 └── README.md               ← 你正在看的这个文件
 ```
 
----
-
-## 📚 HSI-SVM-master 参考项目
-
-这个文件夹来自 GitHub 开源项目 [HSI-SVM](https://github.com/Yangget/HSI-SVM)，在本项目中作为**数据源和参考代码**存在：
-
-| 部分 | 内容 | 与本项目的关系 |
-|------|------|---------------|
-| `Indian Pines/` | 原始数据文件 | 本项目自动从这里读取数据 |
-| `Part_1/create_PCA.py` | PCA 降维 + 数据预处理 | 思路类似，但本项目用 PyTorch 重写 |
-| `Part_2/HSI.py` | 双通道 CNN 模型 | Keras 实现，本项目用 PyTorch |
-| `Part_3/HSI.py` | CNN + SVM 融合 | 传统方法，本项目用纯深度学习 |
-
-> **注意**：该参考项目使用 Keras/TensorFlow，本项目用 PyTorch 独立重写，不直接依赖其中代码。
 
 ---
 

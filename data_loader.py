@@ -10,6 +10,7 @@ import zipfile
 ssl._create_default_https_context = ssl._create_unverified_context
 
 import scipy.io as sio
+import h5py
 import numpy as np
 from sklearn.decomposition import PCA
 from sklearn.model_selection import train_test_split
@@ -22,22 +23,25 @@ from torch.utils.data import Dataset, DataLoader
 
 DATASET_URLS = {
     "IndianPines": {
-        "url": "http://www.ehu.eus/ccwintco/uploads/2/22/Indian_pines_corrected.mat",
+        "data_file": "Indian_pines_corrected.mat",
         "data_key": "indian_pines_corrected",
-        "gt_url": "http://www.ehu.eus/ccwintco/uploads/c/c4/Indian_pines_gt.mat",
+        "gt_file": "Indian_pines_gt.mat",
         "gt_key": "indian_pines_gt",
+        "data_dir": "Indian Pines",
     },
     "PaviaU": {
-        "url": "http://www.ehu.eus/ccwintco/uploads/e/ee/PaviaU.mat",
+        "data_file": "PaviaU.mat",
         "data_key": "paviaU",
-        "gt_url": "http://www.ehu.eus/ccwintco/uploads/5/50/PaviaU_gt.mat",
+        "gt_file": "PaviaU_gt.mat",
         "gt_key": "paviaU_gt",
+        "data_dir": "PaviaU",
     },
     "Houston": {
-        "url": "http://www.ehu.eus/ccwintco/uploads/9/93/Classification_Matlab_Mat.zip",
-        "data_key": "houston",
-        "gt_url": "",
-        "gt_key": "houston_gt",
+        "data_file": "Houston13.mat",    # 默认 13 类版本
+        "data_key": "ori_data",
+        "gt_file": "Houston13_7gt.mat",
+        "gt_key": "map",
+        "data_dir": "Houston",
     },
 }
 
@@ -91,7 +95,7 @@ def load_dataset(name="IndianPines", data_dir="./data"):
 
     参数:
         name: 数据集名称 ("IndianPines", "PaviaU", "Houston")
-        data_dir: 数据存放目录
+        data_dir: 数据存放根目录（其下按数据集名称分子目录）
 
     返回:
         data: (H, W, C) 高光谱数据
@@ -102,26 +106,31 @@ def load_dataset(name="IndianPines", data_dir="./data"):
         raise ValueError(f"不支持的数据集: {name}，可选: {list(DATASET_URLS.keys())}")
 
     info = DATASET_URLS[name]
-    os.makedirs(data_dir, exist_ok=True)
+    dataset_dir = os.path.join(data_dir, info["data_dir"])
 
-    # 下载数据文件
-    data_path = os.path.join(data_dir, os.path.basename(info["url"]))
-    download_file(info["url"], data_path)
+    # 数据文件
+    data_path = os.path.join(dataset_dir, info["data_file"])
+    # 标签文件
+    gt_path = os.path.join(dataset_dir, info["gt_file"])
 
-    # 下载标签文件
-    if name != "Houston":
-        gt_path = os.path.join(data_dir, os.path.basename(info["gt_url"]))
-        download_file(info["gt_url"], gt_path)
+    # 检查文件是否存在
+    if not os.path.exists(data_path):
+        raise FileNotFoundError(f"数据文件不存在: {data_path}")
+    if not os.path.exists(gt_path):
+        raise FileNotFoundError(f"标签文件不存在: {gt_path}")
+
+    # 尝试 scipy 读取，失败则用 h5py（v7.3 格式）
+    try:
         data = sio.loadmat(data_path)[info["data_key"]]
         gt = sio.loadmat(gt_path)[info["gt_key"]]
-    else:
-        # Houston 需要解压
-        if not os.path.exists(os.path.join(data_dir, "Houston.mat")):
-            with zipfile.ZipFile(data_path, 'r') as zf:
-                zf.extractall(data_dir)
-        houston_data = sio.loadmat(os.path.join(data_dir, "Houston.mat"))
-        data = houston_data["Houston"]
-        gt = houston_data["Houston_gt"]
+    except NotImplementedError:
+        with h5py.File(data_path, 'r') as f:
+            data = np.array(f[info["data_key"]]).astype(np.float32)
+        with h5py.File(gt_path, 'r') as f:
+            gt = np.array(f[info["gt_key"]]).astype(np.int64)
+        # h5py 读出的数据可能是转置的，需要调整
+        data = np.transpose(data, (2, 1, 0)) if data.ndim == 3 else data
+        gt = np.transpose(gt, (1, 0)) if gt.ndim == 2 else gt
 
     data = data.astype(np.float32)
     gt = gt.astype(np.int64).squeeze()
