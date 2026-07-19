@@ -99,9 +99,10 @@ def main(args):
         data, gt, window_size=args.window_size
     )
 
-    # PCA 降维
+    # 降维 (PCA 或 LDA)
     if args.pca > 0:
-        patches = apply_pca(patches, n_components=args.pca)
+        patches = apply_dim_reduce(patches, labels, method=args.reduce,
+                                   n_components=args.pca)
 
     # 划分数据集
     train_loader, val_loader, test_loader, class_weights, scaler = create_data_loaders(
@@ -297,7 +298,10 @@ if __name__ == "__main__":
     parser.add_argument("--window_size", type=int, default=25,
                         help="Patch 大小")
     parser.add_argument("--pca", type=int, default=30,
-                        help="PCA 降维波段数（0 表示不降维）")
+                        help="降维后维度数（0 表示不降维）")
+    parser.add_argument("--reduce", type=str, default="pca",
+                        choices=["pca", "lda"],
+                        help="降维方法 (pca=无监督, lda=有监督)")
     parser.add_argument("--train_ratio", type=float, default=0.7,
                         help="训练集比例")
     parser.add_argument("--val_ratio", type=float, default=0.1,

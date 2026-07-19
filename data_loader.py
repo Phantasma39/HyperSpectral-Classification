@@ -272,12 +272,15 @@ def apply_lda(data, labels, n_components=None, pca_pre=100):
     N, H, W, C = shape
     num_classes = len(np.unique(labels))
 
-    # 先 PCA 降维到低维空间，避免 OOM
-    pca_pre = min(pca_pre, H * W * C, N)
-    data_2d = data.reshape(N, -1).astype(np.float64)
+    # 像 PCA 那样先在光谱维度降维：(N, H, W, C) → (N*H*W, C)
+    data_2d = data.reshape(-1, C).astype(np.float64)   # (N*H*W, C)
+    labels_repeated = np.repeat(labels, H * W)          # 每个空间位置复用标签
+
+    # 先 PCA 压缩到低维空间
+    pca_pre = min(pca_pre, C, N * H * W)
     pca = PCA(n_components=pca_pre)
-    data_pca = pca.fit_transform(data_2d)
-    print(f"  [LDA 第一步] PCA: {data_2d.shape[1]} → {pca_pre} 维度")
+    data_pca = pca.fit_transform(data_2d)               # (N*H*W, pca_pre)
+    print(f"  [LDA 第一步] PCA: {C} → {pca_pre} 维度")
 
     # 再 LDA
     max_components = min(pca_pre, num_classes - 1)
@@ -286,7 +289,7 @@ def apply_lda(data, labels, n_components=None, pca_pre=100):
     n_components = min(n_components, max_components)
 
     lda = LinearDiscriminantAnalysis(n_components=n_components)
-    reduced = lda.fit_transform(data_pca, labels)
+    reduced = lda.fit_transform(data_pca, labels_repeated)  # (N*H*W, n_components)
 
     print(f"  [LDA 第二步] LDA: {pca_pre} → {n_components} 维度"
           f"（类别数={num_classes}）")

@@ -445,7 +445,8 @@ criterion = nn.CrossEntropyLoss(weight=class_weights)
 |------|------|------|
 | `--dataset` | IndianPines | IndianPines / PaviaU / Houston |
 | `--model` | hybridsn | hybridsn / hybridsn_se / hybridsn_res |
-| `--pca` | 30 | PCA 降维后波段数 |
+| `--pca` | 30 | 降维后维度数（PCA或LDA） |
+| `--reduce` | pca | 降维方法 (pca=无监督, lda=有监督) |
 | `--window_size` | 25 | Patch 大小 |
 | `--epochs` | 100 | 训练轮数 |
 | `--batch_size` | 32 | 批大小 |
