@@ -104,7 +104,7 @@ def main(args):
         patches = apply_pca(patches, n_components=args.pca)
 
     # 划分数据集
-    train_loader, val_loader, test_loader, class_weights = create_data_loaders(
+    train_loader, val_loader, test_loader, class_weights, scaler = create_data_loaders(
         patches, labels,
         train_ratio=args.train_ratio,
         val_ratio=args.val_ratio,
@@ -224,7 +224,12 @@ def main(args):
     # ---- 全量预测（用于完整分类结果图） ----
     print("\n  生成完整分类结果图...")
     from torch.utils.data import DataLoader
-    full_dataset = HyperSpectralDataset(patches, labels)  # 全量标准化后的数据
+    # 用训练时的 StandardScaler 标准化全量 patches
+    full_patches = patches.copy()
+    full_flat = full_patches.reshape(len(full_patches), -1)
+    full_flat = scaler.transform(full_flat)
+    full_patches = full_flat.reshape(full_patches.shape)
+    full_dataset = HyperSpectralDataset(full_patches, labels)
     full_loader = DataLoader(full_dataset, batch_size=args.batch_size, shuffle=False)
     model.eval()
     full_preds = []

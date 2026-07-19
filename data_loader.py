@@ -325,7 +325,7 @@ def create_data_loaders(patches, labels, train_ratio=0.7, val_ratio=0.1,
     test_loader = DataLoader(test_dataset, batch_size=batch_size,
                              shuffle=False, num_workers=num_workers)
 
-    return train_loader, val_loader, test_loader, class_weights
+    return train_loader, val_loader, test_loader, class_weights, scaler
 
 
 # ==================== 快速测试 ====================
