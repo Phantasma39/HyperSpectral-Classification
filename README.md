@@ -356,19 +356,24 @@ python test_model.py --model_path results/hybridsn_IndianPines.pth
 | 数据集 | 图像尺寸 | 波段数 | 类别数 | OA | AA | Kappa | Epoch |
 |--------|---------|--------|--------|-----|------|-------|-------|
 | **Indian Pines** | 145×145 | 200→30 | 16 | **99.32%** | **99.56%** | **0.9922** | 10 |
+| **Pavia University** | 610×340 | 103→30 | 9 | **99.96%** | **99.97%** | **0.9995** | 5 |
 | **Houston** | 210×954 | 48→20 | 7 | **99.80%** | **99.80%** | **0.9977** | 100 |
 
-### Houston (100 epoch) — 混淆矩阵 + 分类结果
+> 三个数据集均使用 **HybridSN 标准版** + Adam + 加权交叉熵，CPU 训练。
 
-![混淆矩阵](results/figures/06_confusion_matrix.png)
+### 分类结果可视化
 
-![分类结果图](results/figures/07_classification_map.png)
+#### Indian Pines (10 epoch, OA=99.32%)
 
-### Indian Pines (10 epoch) — 训练曲线 + 光谱曲线
+![Indian Pines 训练曲线](results/figures/05_training_curves.png)
 
-![训练曲线](results/figures/05_training_curves.png)
+![Indian Pines 光谱曲线](results/figures/02_spectral_curves.png)
 
-![光谱曲线](results/figures/02_spectral_curves.png)
+#### Houston (100 epoch, OA=99.80%)
+
+![Houston 混淆矩阵](results/figures/06_confusion_matrix.png)
+
+![Houston 分类结果](results/figures/07_classification_map.png)
 
 ### Indian Pines — 每类详细准确率
 
