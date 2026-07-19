@@ -2,116 +2,193 @@
 
 [![Python](https://img.shields.io/badge/Python-3.9-blue.svg)](https://www.python.org/)
 [![PyTorch](https://img.shields.io/badge/PyTorch-2.8-orange.svg)](https://pytorch.org/)
-[![License](https://img.shields.io/badge/License-MIT-green.svg)](LICENSE)
+[![Datasets](https://img.shields.io/badge/Datasets-3个-brightgreen.svg)](#-数据集说明)
+[![Models](https://img.shields.io/badge/Models-3个-red.svg)](#-三个模型到底有什么区别)
 
 ---
 
 ## 📌 目录
 
-1. [什么是高光谱图像？](#-什么是高光谱图像)
-2. [这个项目做什么？](#-这个项目做什么)
-3. [整体流程（一张图看懂）](#-整体流程一张图看懂)
+1. [项目概览：到底做了什么](#-项目概览到底做了什么)
+2. [三个模型到底有什么区别](#-三个模型到底有什么区别)
+3. [数据集说明](#-数据集说明)
 4. [环境配置](#-环境配置)
-5. [数据集说明](#-数据集说明)
-6. [代码文件详解](#-代码文件详解)
-7. [怎么运行？](#-怎么运行)
-8. [模型保存与复用](#-模型保存与复用)
-9. [实验结果](#-实验结果)
-10. [评估指标是什么意思？](#-评估指标是什么意思)
-11. [项目结构](#-项目结构)
-12. [常见问题](#-常见问题)
+5. [代码文件逐个详解](#-代码文件逐个详解)
+   - [data_loader.py — 数据入口](#data_loaderpy--数据加载与预处理)
+   - [model.py — 神经网络模型](#modelpy--三个神经网络模型)
+   - [train.py — 训练脚本](#trainpy--训练与评估脚本)
+   - [visualize.py — 可视化](#visualizepy--可视化模块)
+   - [test_model.py — 测试脚本](#test_modelpy--加载模型直接测试)
+6. [怎么运行？](#-怎么运行)
+7. [实验结果](#-实验结果)
+8. [评估指标](#-评估指标是什么意思)
+9. [项目结构](#-项目结构)
+10. [常见问题](#-常见问题)
 
 ---
 
-## 🤔 什么是高光谱图像？
+## 🎯 项目概览：到底做了什么
 
-### 通俗理解
+### 一句话总结
 
-普通照片只有**红、绿、蓝 3 个颜色通道**。你把相机对准一片森林，拍出来是绿色的。
+给高光谱图像的每个像素判断它属于哪种地物（玉米、森林、建筑……）。用深度学习模型来做这个分类任务。
 
-高光谱图像有**几百个通道**，每一个通道对应一段极窄的光波波长。同样的森林，你用高光谱相机拍，能区分出"这片绿色是松树，那片绿色是杂草，旁边那块看起来一样绿但其实是灌木"。
+### 本项目包含
 
-这就是为什么高光谱被广泛应用在**遥感、农业、地质勘探、军事侦查**上——它能看到人眼看不到的物质差异。
+| 内容 | 数量 | 说明 |
+|------|------|------|
+| 神经网络模型 | **3 个** | 标准版 / 加注意力版 / 残差+注意力版 |
+| 数据集 | **3 个** | Indian Pines / Pavia University / Houston |
+| Python 代码文件 | **5 个** | 数据加载 / 模型定义 / 训练 / 可视化 / 测试 |
+| 已训练模型 | **3 个 .pth** | 三个数据集的标准版均已训练完毕 |
 
----
-
-## 🎯 这个项目做什么？
-
-**一句话**：输入高光谱图像的一个小方块（25×25 像素），用深度学习模型判断这个方块中心像素属于哪一种地物类别。
-
-项目完成以下工作：
-
-1. **读数据** — 加载 `.mat` 格式的高光谱数据文件和对应的标签文件
-2. **降维** — 原始数十至数百个波段太多、计算太慢，用 PCA 压缩到核心波段
-3. **切块** — 以每个有标签的像素为中心，切出 25×25 的小方块作为训练样本
-4. **建模型** — 搭建 HybridSN 神经网络（3D 卷积 + 2D 卷积混合架构，含 SE 注意力与残差改进版）
-5. **训练** — 70% 训练 / 10% 验证 / 20% 测试，加权损失函数处理类别不均衡
-6. **评估** — 输出 OA、AA、Kappa 系数、混淆矩阵及 7 张可视化图表
-
----
-
-## 🔄 整体流程（一张图看懂）
+### 完整流程
 
 ```
-高光谱数据 (H×W×C)           标签文件 (H×W)
-        │                          │
-        └──────────┬───────────────┘
-                   ▼
-             PCA 降维
-                   │
-                   ▼
-         提取 Patches (N个, 每个 25×25×k)
-                   │
-                   ▼
-      ┌────── 数据划分 (分层采样) ──────┐
-      │         │              │        │
-      ▼         ▼              ▼        │
-   训练集     验证集         测试集      │
-   (70%)     (10%)          (20%)      │
-      │         │              │        │
-      └─────────┴──────────────┘        │
-                │                       │
-                ▼                       │
-      HybridSN 神经网络                 │
-      ┌──────────────────────┐          │
-      │ 3D Conv (光谱+空间)  │          │
-      │ 3D Conv (光谱+空间)  │          │
-      │ 3D Conv (光谱+空间)  │          │
-      │ reshape → 2D Conv    │          │
-      │ Flatten → FC → 分类  │          │
-      └──────────────────────┘          │
-                │                       │
-                ▼                       │
-          训练 → 验证 → 保存最佳模型    │
-      (加权交叉熵 + Adam + LR调度)      │
-                │                       │
-                ▼                       │
-      ┌──── 最终评估 ────┐              │
-      │ OA / AA / Kappa  │◄─────────────┘
-      │ 混淆矩阵 + 7张图  │
-      └─────────────────┘
+原始 .mat 文件
+    │
+    ▼ data_loader.py
+加载数据 → PCA 降维 → 切 patches → 标准化 → DataLoader
+    │
+    ▼ model.py（构建神经网络）
+HybridSN / HybridSN_SE / HybridSN_Res
+    │
+    ▼ train.py
+训练 → 验证 → 测试 → 保存 .pth 模型 + 生成 7 张可视化图
+    │
+    ▼ test_model.py（复用模型）
+加载 .pth → 全量评估 + 随机抽样 → 打印结果 + 生成图
+```
+
+---
+
+## 🧠 三个模型到底有什么区别？
+
+> 类比理解：把神经网络想象成一个考试系统——
+>
+> - **标准版** = 一个普通学生，老老实实做题
+> - **注意力版** = 同上，但这个学生学会了"哪些知识点重要，哪个选择题的分值高，优先做"
+> - **残差+注意力版** = 同上，而且他有一本"可以抄近路"的笔记（不会就翻看原题） + 也知道哪些知识点重要
+
+### 模型 1：`HybridSN` — 标准版（60 分基线，已训练）
+
+```
+输入 (B, 30, 25, 25)
+  → 增加维度 → (B, 1, 30, 25, 25)
+  → 3D Conv (kernel=7×3×3, 8 通道)    ← 同时扫描光谱+空间
+  → 3D Conv (kernel=5×3×3, 16 通道)
+  → 3D Conv (kernel=3×3×3, 32 通道)
+  → reshape 成 2D 格式
+  → 2D Conv (64 通道)               ← 扫描空间纹理
+  → 展平 → FC(256) → FC(128) → FC(16) → 输出 16 个类别的分数
+```
+
+**参数量**：6,302,064 个。代码位置：`model.py` 第 79 行。
+
+### 模型 2：`HybridSN_SE` — 加 SE 通道注意力（80 分改进，未训练）
+
+**和标准版的唯一区别**：每层卷积后面插入了一个 SE (Squeeze-and-Excitation) 模块。
+
+```
+3D Conv → BN → ReLU → SE ← 新增！自动加权哪些通道重要
+3D Conv → BN → ReLU → SE
+3D Conv → BN → ReLU → SE
+reshape → 2D Conv → BN → ReLU → SE
+→ FC(256) → FC(128) → FC(16)
+```
+
+**SE 是什么？** 假设一层卷积输出了 32 个"特征图"（有的关注边缘纹理，有的关注光谱吸收峰，有的是噪声）。SE 自动给有用的特征图更高的权重，给噪声更低的权重。就像学生知道哪些题目分值高一样。
+
+**参数量**：6,302,736 个（只比标准版多 672 个，几乎无额外负担）。代码位置：`model.py` 第 162 行。
+
+### 模型 3：`HybridSN_Res` — 残差块 + SE 注意力（90+ 分改进，未训练）
+
+**和标准版的两大区别**：
+
+1. 3D 卷积层替换为 **残差块 (Residual Block)**
+2. 残差块内部还带有 **SE 注意力**
+
+```
+3D 残差块 (1→8, 含 SE)    ← 替换了原来的 3D Conv
+3D 残差块 (8→16, 含 SE)
+3D 残差块 (16→32, 含 SE)
+reshape → 2D Conv → BN → ReLU → SE
+→ FC(256) → FC(128) → FC(16)
+```
+
+**残差块是什么？**
+```
+普通卷积：  输入 → Conv → BN → ReLU → Conv → BN → 输出
+残差块：    输入 → Conv → BN → ReLU → Conv → BN → +输入 → 输出
+                                                      ↑
+                                                   shortcut（抄近路）
+```
+"残差连接"就是把输入原样加到输出上。有什么用？如果网络某一层"学不会"，信号不会完全丢失，而是可以通过 shortcut 原样传到下一层。这解决了深层网络"信号越来越弱（梯度消失）"的问题。
+
+**参数量**：10,893,480 个（最大最强，但也最慢）。代码位置：`model.py` 第 228 行。
+
+### 三模型对比总结
+
+| 模型 | 关键改进 | 原理 | 参数量 | 分数段 | 训练状态 |
+|------|---------|------|--------|--------|---------|
+| `hybridsn` | — | 标准 3D+2D CNN | 6.30M | **60** | ✅ 已训练 |
+| `hybridsn_se` | +SE 注意力 | 自动加权通道重要性 | 6.30M | **80** | ❌ 未训练 |
+| `hybridsn_res` | +残差+SE | 残差抄近路 + 注意力 | 10.89M | **90+** | ❌ 未训练 |
+
+---
+
+## 📦 数据集说明
+
+### 三个经典高光谱数据集
+
+| 数据集 | 图像尺寸 | 波段数 | 类别数 | 标注像素 | 场景 |
+|--------|---------|--------|--------|---------|------|
+| **Indian Pines** | 145×145 | 200 | 16 | 10,249 | 农田/森林，机载传感器 |
+| **Pavia University** | 610×340 | 103 | 9 | 42,776 | 意大利帕维亚大学，ROSIS 传感器 |
+| **Houston** | 210×954 | 48 | 7 | 2,530 | 休斯顿大学 + NASA，CASI 传感器 |
+
+### 数据格式
+
+所有数据以 MATLAB `.mat` 格式存储。有两个文件：
+
+| 文件 | 内容 | 形状说明 |
+|------|------|----------|
+| `xxx.mat` | 高光谱影像 | `(H, W, C)` — H 行、W 列像素，C 个光谱波段 |
+| `xxx_gt.mat` | 地物标签 | `(H, W)` — 每个像素一个数字（0=背景，1~N=类别） |
+
+### 数据目录
+
+```
+data/
+├── Indian Pines/
+│   ├── Indian_pines_corrected.mat
+│   └── Indian_pines_gt.mat
+├── PaviaU/
+│   ├── PaviaU.mat
+│   └── PaviaU_gt.mat
+└── Houston/
+    ├── Houston13.mat          ← v7.3 格式，需要 h5py 读取
+    └── Houston13_7gt.mat
 ```
 
 ---
 
 ## 💻 环境配置
 
-### 需要安装的 Python 库
-
 ```bash
 pip install torch torchvision numpy matplotlib scipy scikit-learn h5py
 ```
 
-| 库名 | 作用 |
-|------|------|
-| `torch` | **PyTorch 深度学习框架**，搭建和训练神经网络的核心 |
-| `numpy` | **矩阵和数组运算**，数据存储和变换的基石 |
-| `matplotlib` | **画图**（训练曲线、分类结果图） |
-| `scipy` | **读取 .mat 文件**（v5 格式） |
-| `h5py` | **读取 .mat 文件**（v7.3 格式，如 Houston 数据集） |
-| `scikit-learn` | **机器学习工具**：PCA 降维、数据划分、评估指标 |
+| 库 | 干什么用 |
+|----|---------|
+| `torch` | PyTorch 深度学习框架，搭网络、训练的核心 |
+| `numpy` | 数组和矩阵运算 |
+| `matplotlib` | 画所有可视化图表 |
+| `scipy` | 读 `.mat` 文件（MATLAB v5 格式） |
+| `h5py` | 读 `.mat` 文件（MATLAB v7.3 格式，Houston 数据需要） |
+| `scikit-learn` | PCA 降维、数据划分、OA/Kappa 等评估指标 |
 
-### 验证环境
+验证环境：
 
 ```bash
 python check_env.py
@@ -119,185 +196,190 @@ python check_env.py
 
 ---
 
-## 📦 数据集说明
-
-### 支持的三个经典高光谱数据集
-
-| 数据集 | 图像尺寸 | 波段数 | 类别数 | 标注像素数 | 场景 |
-|--------|---------|--------|--------|-----------|------|
-| **Indian Pines** | 145×145 | 200 | 16 | 10,249 | 农田/森林 |
-| **Pavia University** | 610×340 | 103 | 9 | 42,776 | 城市遥感 |
-| **Houston** | 210×954 | 48 | 7 | 2,530 | 城市遥感 |
-
-### 文件格式
-
-高光谱数据以 **MATLAB `.mat` 格式**存储，每个数据集需要两个文件：
-
-- **数据文件**：三维数组 `(H, W, C)`，H 行 × W 列像素，C 个光谱波段
-- **标签文件**：二维数组 `(H, W)`，每个像素的值即类别编号（0 表示未标注背景）
-
-### 数据目录结构
-
-```
-data/
-├── Indian Pines/
-│   ├── Indian_pines_corrected.mat    ← 数据
-│   └── Indian_pines_gt.mat           ← 标签
-├── PaviaU/
-│   ├── PaviaU.mat
-│   └── PaviaU_gt.mat
-└── Houston/
-    ├── Houston13.mat                 ← v7.3 格式，需 h5py
-    └── Houston13_7gt.mat
-```
-
-代码会自动在 `data/{数据集名}/` 下查找对应文件。
+## 📝 代码文件逐个详解
 
 ---
-
-## 📝 代码文件详解
 
 ### `data_loader.py` — 数据加载与预处理
 
-<details>
-<summary><b>点击展开：6 个核心函数详解</b></summary>
+> **一句话**：把 `.mat` 文件读进来，变成 PyTorch 能吃的 DataLoader。
 
-#### `load_dataset(name, data_dir)` — 加载数据集
+#### 它干了什么（按顺序）
 
-```python
-data, gt, num_classes = load_dataset("IndianPines", "./data")
+```
+.mat 文件
+  ↓ load_dataset()          读取 + 检查文件存在
+  ↓ plot_data_overview()   生成 4 张数据概览图（自动调用 visualize.py）
+  ↓ create_patches()       每个有标签像素切 25×25 方块，跳过背景
+  ↓ apply_pca()            光谱波段 200→30（保留 99.8% 信息）
+  ↓ create_data_loaders()  分层划分(70/10/20) → StandardScaler 标准化 → DataLoader
+  ↓ 返回 train/val/test 三个 DataLoader
 ```
 
-按数据集名称到 `data/{Indian Pines,Houston,PaviaU}/` 下查找 `.mat` 文件并读取。自动处理两种 MATLAB 格式（v5 用 scipy、v7.3 用 h5py）。
+#### 核心函数
 
-#### `pad_with_zeros(data, margin)` — 边界零填充
-
-边缘像素切 patch 时会越界，先在外围填一圈 0 解决。
-
-#### `create_patches(data, gt, window_size=25)` — 提取 Patches
-
-遍历每个有标签的像素，切出 25×25 方块。跳过背景（标签=0），把原始标签重新映射为 0~N-1。同时返回每个样本在原图中的 `(row, col)` 坐标。
-
-#### `apply_pca(data, n_components=30)` — PCA 降维
-
-把 C 个光谱波段压缩到 k 个主成分。200→30 保留 99.8% 信息，48→20 保留 99.99%。
-
-#### `HyperSpectralDataset` — PyTorch Dataset 包装
-
-把 numpy `(H,W,C)` 转为 `(C,H,W)` 供 PyTorch 卷积使用。
-
-#### `create_data_loaders(...)` — 划分 + 标准化 + DataLoader
-
-分层采样保证每类在各子集中比例一致 → StandardScaler 标准化（只统计训练集）→ 打包 batch。
-
-</details>
+| 函数 | 输入 → 输出 | 关键逻辑 |
+|------|------------|----------|
+| `load_dataset(name, dir)` | 数据集名字 → `(data, gt, num_classes)` | 先去 `data/{名字}/` 找文件，scipy 读 v5、h5py 读 v7.3 |
+| `pad_with_zeros(data, margin)` | 原始图像 → 外圈填 0 的图像 | 边缘像素切 patch 不会越界 |
+| `create_patches(data, gt, 25)` | 图像+标签 → `(10249, 25, 25, C)` | 跳过背景、标签重映射为 0~N-1、返回每个像素的 (row, col) |
+| `apply_pca(patches, 30)` | `(N, H, W, 200)` → `(N, H, W, 30)` | PCA 降维 |
+| `create_data_loaders(...)` | patches + labels → 3 个 DataLoader + scaler | 分层采样 + StandardScaler + 类别权重计算 |
 
 ---
 
-### `model.py` — 神经网络模型定义
+### `model.py` — 三个神经网络模型
 
-<details>
-<summary><b>点击展开：基础组件 + 3 个模型结构</b></summary>
+> **一句话**：这个文件定义了 3 个模型，从简单到复杂。`train.py` 通过 `--model` 参数选哪个。
+
+#### 文件结构
+
+```
+model.py
+├── SELayer           ← 2D 版通道注意力
+├── SE3DLayer         ← 3D 版通道注意力
+├── ResidualBlock3D   ← 3D 残差块（含 SE）
+├── HybridSN          ← 模型 1：标准版（L79）
+├── HybridSN_SE       ← 模型 2：加 SE 注意力（L162）
+└── HybridSN_Res      ← 模型 3：残差块 + SE（L228）
+```
 
 #### 基础组件
 
-- **SELayer**：Squeeze-and-Excitation 通道注意力。对 2D 特征图做全局平均池化→FC→Sigmoid→乘回原图，自动学习各通道重要性权重。
-- **SE3DLayer**：3D 版本，在 (C, D, H, W) 上操作。
-- **ResidualBlock3D**：3D 残差块 + SE 注意力。`out = conv(conv(x)) + shortcut(x)`，维度不变，解决深层网络梯度退化。
+**SELayer (L13)**：输入一个特征图 → 全局平均池化（压成 1 个数）→ 小全连接层 → ReLU → 大全连接层 → Sigmoid（压到 0~1）→ 乘回原特征图。这样每个通道有了一个 0~1 的权重，模型自动学会了哪些通道重要。
 
-#### 模型
+**ResidualBlock3D (L49)**：`out = conv(conv(x)) + shortcut(x)`。如果 `in_ch ≠ out_ch`，shortcut 里用 1×1×1 卷积对齐维度。这个块里面还带着 SE3DLayer 注意力。
 
-| 模型 | 说明 | 参数量 | 分数段 |
-|------|------|--------|--------|
-| `HybridSN` | 标准版（3 层 3D Conv → 1 层 2D Conv → FC） | 6.3M | **60** |
-| `HybridSN_SE` | 标准版 + 各层后加 SE 注意力 | 6.3M | **80** |
-| `HybridSN_Res` | 3D Conv 替换为残差块 + SE | 10.9M | **90+** |
+#### 三个模型的数据流（详解）
 
-</details>
+**HybridSN 前向传播 (L136)**：
+
+```python
+def forward(self, x):
+    x = x.unsqueeze(1)                    # (B,30,25,25) → (B,1,30,25,25)
+    x = F.relu(bn1(conv3d_1(x)))          # 3D Conv 7×3×3: 1→8 ch
+    x = F.relu(bn2(conv3d_2(x)))          # 3D Conv 5×3×3: 8→16 ch
+    x = F.relu(bn3(conv3d_3(x)))          # 3D Conv 3×3×3: 16→32 ch
+    x = x.reshape(B, -1, H, W)            # 合并光谱维度到通道
+    x = F.relu(bn2d(conv2d(x)))           # 2D Conv: →64 ch
+    x = x.reshape(B, -1)                  # 展平
+    x = dropout(F.relu(fc1(x)))           # FC 256
+    x = dropout(F.relu(fc2(x)))           # FC 128
+    x = classifier(x)                     # FC → num_classes
+    return x
+```
+
+**HybridSN_SE 的区别**：每行卷积后面多一行 `x = self.se3d_n(x)`，2D 卷积后多一行 `x = self.se2d(x)`。
+
+**HybridSN_Res 的区别**：前 3 行卷积换成 `x = self.res3d_n(x)`（残差块内部包含两层卷积 + shortcut + SE）。
 
 ---
 
 ### `train.py` — 训练与评估脚本
 
-<details>
-<summary><b>点击展开：5 步训练流程 + 关键设计</b></summary>
+> **一句话**：你运行 `python train.py` 时执行的所有逻辑。
+
+#### main() 函数的 5 个步骤
 
 ```
-步骤1: 加载数据（load_dataset → create_patches → PCA → create_data_loaders）
-步骤2: 创建模型（HybridSN / SE / Res，根据 --model 参数）
-步骤3: 训练循环（train_one_epoch → evaluate → ReduceLROnPlateau 调度）
-步骤4: 测试（加载最佳 checkpoint → 全量评估）
-步骤5: 保存（*.pth 模型权重 + 可视化图表）
+步骤 1: 加载数据
+  调用 data_loader 的函数：load_dataset → plot_data_overview → create_patches → apply_pca → create_data_loaders
+
+步骤 2: 创建模型
+  MODEL_MAP = {"hybridsn": HybridSN, "hybridsn_se": HybridSN_SE, "hybridsn_res": HybridSN_Res}
+  根据 --model 参数选模型
+
+步骤 3: 训练循环
+  for epoch in range(1, epochs+1):
+    train_one_epoch()  →  前向传播 → 算 loss → 反向传播 → 更新参数
+    evaluate()         →  在验证集上算 OA / Loss / 混淆矩阵
+    scheduler.step()   →  若 val_loss 连续 10 epoch 不降，lr 自动减半
+    保存 history
+
+步骤 4: 测试
+  加载最佳模型 → 测试集评估 → 输出 OA/AA/Kappa/每类准确率
+
+步骤 5: 保存
+  save .pth (模型权重 + 配置 + 标签映射 + OA + Kappa)
+  save _report.txt (分类报告 + 混淆矩阵)
+  plot_training_results() → 生成训练曲线/混淆矩阵/分类结果图
 ```
 
-**关键设计决策**：
+#### 关键设计
 
-- **加权交叉熵损失**：`weight = 1/样本数`，小类犯错罚更重，防止模型偏向大类。
-- **Adam 优化器**：自适应学习率，动量 + RMSProp。
-- **ReduceLROnPlateau**：验证 loss 连续 10 epoch 不降 → lr 自动减半，精细搜索最优解。
-- **最佳模型保存**：只保存验证准确率最高的 checkpoint，防止过拟合。
+**加权交叉熵损失**：
 
-</details>
+```python
+class_weights = 1.0 / counts        # 小类权重大
+criterion = nn.CrossEntropyLoss(weight=class_weights)
+```
 
-#### 可调参数一览
+为什么？Indian Pines 里"燕麦"只有 20 个样本，"大豆-少耕"有 2455 个。不加权的话，模型预测"一切都是大豆"就能拿到高准确率，其他小类全废了。加权让小类犯错罚得更重。
 
-| 参数 | 默认值 | 说明 |
-|------|--------|------|
-| `--dataset` | IndianPines | 数据集 (IndianPines / PaviaU / Houston) |
-| `--model` | hybridsn | 模型 (hybridsn / hybridsn_se / hybridsn_res) |
+**ReduceLROnPlateau**：监控 val_loss，如果连续 10 轮不降，学习率自动减半。帮助模型在接近最优时精细搜索。
+
+#### 命令行参数
+
+| 参数 | 默认 | 说明 |
+|------|------|------|
+| `--dataset` | IndianPines | IndianPines / PaviaU / Houston |
+| `--model` | hybridsn | hybridsn / hybridsn_se / hybridsn_res |
 | `--pca` | 30 | PCA 降维后波段数 |
-| `--window_size` | 25 | 输入 patch 边长 |
+| `--window_size` | 25 | Patch 大小 |
 | `--epochs` | 100 | 训练轮数 |
 | `--batch_size` | 32 | 批大小 |
-| `--lr` | 0.001 | 初始学习率 |
+| `--lr` | 0.001 | 学习率 |
 | `--dropout` | 0.4 | Dropout 比例 |
-| `--weight_decay` | 0.0001 | L2 正则化 |
-| `--train_ratio` | 0.7 | 训练集占比 |
-| `--seed` | 42 | 随机种子 |
+| `--train_ratio` | 0.7 | 训练集占比（测试集=1-ratio-val_ratio） |
 
 ---
 
 ### `visualize.py` — 可视化模块
 
-训练过程中自动生成 **7 张高质量图表**，保存在 `results/figures/`。
+> **一句话**：训练前后自动生成 7 张图。可以独立运行 `python visualize.py`。
 
-| # | 文件名 | 内容 |
-|---|--------|------|
-| 1 | `01_data_overview.png` | 三栏：伪彩色合成 + PCA 第一主成分 + 标签图（含图例） |
-| 2 | `02_spectral_curves.png` | 各类地物的平均光谱反射率曲线 |
-| 3 | `03_class_distribution.png` | 各类标注像素数量柱状图 |
-| 4 | `04_pca_variance.png` | PCA 累计解释方差曲线，标注降维维度和 99% 线 |
-| 5 | `05_training_curves.png` | 训练/验证 Loss + Accuracy 双曲线，标注最佳 epoch |
-| 6 | `06_confusion_matrix.png` | 归一化混淆矩阵 + 各类准确率柱状图 |
-| 7 | `07_classification_map.png` | 真值 vs 预测 vs 对/错对照 + 图例 |
-
-也可独立运行测试：
-
-```bash
-python visualize.py
-```
+| # | 文件名 | 内容 | 谁调用的 |
+|---|--------|------|---------|
+| 1 | `01_data_overview.png` | 伪彩色合成 + PCA 主成分 + 标签图（图例） | `plot_data_overview()` ← `train.py` / `test_model.py` |
+| 2 | `02_spectral_curves.png` | 各类平均光谱曲线 | 同上 |
+| 3 | `03_class_distribution.png` | 各类样本数柱状图 | 同上 |
+| 4 | `04_pca_variance.png` | PCA 累计方差曲线（标注 99% 线和降维维度） | 同上 |
+| 5 | `05_training_curves.png` | 训练/验证 Loss + Accuracy 双曲线（标注最佳 epoch） | `plot_training_results()` ← `train.py` |
+| 6 | `06_confusion_matrix.png` | 归一化混淆矩阵 + 各类准确率柱状图 | 同上 |
+| 7 | `07_classification_map.png` | 真值/预测/正确-错误对照 + 图例 | 同上 |
 
 ---
 
-### `test_model.py` — 模型测试与可视化
+### `test_model.py` — 加载模型直接测试
 
-**加载已训练的 .pth 模型，无需重新训练**，直接进行测试和可视化。
+> **一句话**：加载 `.pth` 文件，**不需要重新训练**，直接测试 + 生成可视化。
 
 ```bash
-# 基本用法
 python test_model.py --model_path results/hybridsn_IndianPines.pth --num_samples 10
-
-# 跨数据集
-python test_model.py --model_path results/hybridsn_Houston.pth --dataset Houston --pca 20
 ```
 
-| 步骤 | 说明 |
-|------|------|
-| 1️⃣ 加载模型 | 读取 .pth 文件，输出配置和保存时的准确率 / Kappa |
-| 2️⃣ 加载数据 | PCA 降维 + StandardScaler 标准化 |
-| 3️⃣ 全量评估 | 预测全部标注像素，输出 OA / AA / Kappa |
-| 4️⃣ 随机抽样 | 抽取 N 个样本，打印位置、真实标签、预测标签、置信度 |
-| 5️⃣ 可视化 | 随机样本图 + 混淆矩阵 + 分类结果图 |
+**执行流程**：
+
+| 步骤 | 做什么 |
+|------|--------|
+| 1️⃣ 加载模型 | 读 `.pth`，从文件名识别模型类型（hybridsn / SE / Res），恢复权重 |
+| 2️⃣ 加载数据 | 读 `.mat` → PCA → StandardScaler → DataLoader |
+| 3️⃣ 全量评估 | 对全部标注像素预测，输出 OA / AA / Kappa |
+| 4️⃣ 随机抽样 | 抽取 N 个样本，每个打印：位置坐标、真实标签、预测标签、置信度% |
+| 5️⃣ 生成可视化 | 随机样本图 + 混淆矩阵 + 分类结果图 |
+
+**示例输出**：
+
+```
+======================================================================
+  随机测试结果 (8/8 正确, 100.0%)
+======================================================================
+#    位置           真实       预测       置信度(%)       结果
+----------------------------------------------------------------------
+1    ( 24, 27)   14       14       94.5         ✓
+2    (  5,102)   10       10       59.5         ✓
+...
+```
 
 ---
 
@@ -306,21 +388,21 @@ python test_model.py --model_path results/hybridsn_Houston.pth --dataset Houston
 ### 训练
 
 ```bash
-# 60 分基线
+# 60 分：标准版
 python train.py --model hybridsn --epochs 10
 
-# 80 分改进（SE 注意力）
+# 80 分：加注意力
 python train.py --model hybridsn_se --epochs 50
 
-# 90+ 分改进（残差 + SE）
+# 90+ 分：残差 + 注意力
 python train.py --model hybridsn_res --epochs 50
 
-# 不同数据集
+# 不同数据集（Houston 需要 --pca 20）
 python train.py --dataset Houston --pca 20 --epochs 100
-python train.py --dataset PaviaU --pca 30 --epochs 100
+python train.py --dataset PaviaU --epochs 100
 ```
 
-### 测试（加载已训练模型，不重训）
+### 测试（加载模型，不重训）
 
 ```bash
 python test_model.py --model_path results/hybridsn_IndianPines.pth --num_samples 10
@@ -329,57 +411,47 @@ python test_model.py --model_path results/hybridsn_IndianPines.pth --num_samples
 ### 模块独立测试
 
 ```bash
-python data_loader.py    # 数据加载测试
-python model.py          # 模型前向传播测试
-python visualize.py      # 可视化模块测试
-python check_env.py      # 依赖库检查
+python data_loader.py     # 数据加载测试
+python model.py           # 模型前向传播测试（三个模型各跑一次）
+python visualize.py       # 可视化模块独立测试
+python check_env.py       # 依赖库检查
 ```
-
----
-
-## 💾 模型保存与复用
-
-训练完后 `results/` 下会生成 `.pth` 文件，包含模型权重、配置、标签映射和评估指标。后续无需重新训练：
-
-```bash
-python test_model.py --model_path results/hybridsn_IndianPines.pth
-```
-
-脚本自动从文件名识别模型类型（HybridSN / SE / Res），加载权重后直接推理。
 
 ---
 
 ## 📊 实验结果
 
-### 跨数据集对比
+### 三数据集对比（HybridSN 标准版）
 
-| 数据集 | 图像尺寸 | 波段数 | 类别数 | OA | AA | Kappa | Epoch |
-|--------|---------|--------|--------|-----|------|-------|-------|
+| 数据集 | 尺寸 | 波段 | 类别 | OA | AA | Kappa | Epoch |
+|--------|------|------|------|-----|------|-------|-------|
 | **Indian Pines** | 145×145 | 200→30 | 16 | **99.32%** | **99.56%** | **0.9922** | 10 |
 | **Pavia University** | 610×340 | 103→30 | 9 | **99.96%** | **99.97%** | **0.9995** | 5 |
 | **Houston** | 210×954 | 48→20 | 7 | **99.80%** | **99.80%** | **0.9977** | 100 |
 
-> 三个数据集均使用 **HybridSN 标准版** + Adam + 加权交叉熵，CPU 训练。
+### 可视化结果
 
-### 分类结果可视化
+#### Indian Pines — 训练曲线
 
-#### Indian Pines (10 epoch, OA=99.32%)
+![训练曲线](results/figures/05_training_curves.png)
 
-![Indian Pines 训练曲线](results/figures/05_training_curves.png)
+#### Indian Pines — 光谱曲线
 
-![Indian Pines 光谱曲线](results/figures/02_spectral_curves.png)
+![光谱曲线](results/figures/02_spectral_curves.png)
 
-#### Houston (100 epoch, OA=99.80%)
+#### Houston — 混淆矩阵
 
-![Houston 混淆矩阵](results/figures/06_confusion_matrix.png)
+![混淆矩阵](results/figures/06_confusion_matrix.png)
 
-![Houston 分类结果](results/figures/07_classification_map.png)
+#### Houston — 分类结果图
 
-### Indian Pines — 每类详细准确率
+![分类结果](results/figures/07_classification_map.png)
 
-| 类别 | 原始标签 | 测试样本 | 准确率 |
-|------|----------|---------|--------|
-| 0 | 苜蓿 (Alfalfa) | 9 | 100.00% |
+### Indian Pines 每类准确率
+
+| 类别 | 地物 | 测试样本 | 准确率 |
+|------|------|---------|--------|
+| 0 | 苜蓿 | 9 | 100.00% |
 | 1 | 玉米-免耕 | 286 | 99.65% |
 | 2 | 玉米-少耕 | 166 | 100.00% |
 | 3 | 玉米 | 47 | 100.00% |
@@ -402,10 +474,10 @@ python test_model.py --model_path results/hybridsn_IndianPines.pth
 
 | 指标 | 通俗解释 |
 |------|----------|
-| **OA** (Overall Accuracy) | 预测正确的样本数 ÷ 总样本数。"所有题一共对了多少" |
-| **AA** (Average Accuracy) | 各类准确率的平均值。对少数类更公平 |
-| **Kappa** | 衡量分类结果比瞎猜好多少。Kappa=1 完美，0=瞎猜，<0=比瞎猜还差 |
-| **混淆矩阵** | N×N 表格，第 i 行第 j 列 = 实际为 i 类但被预测为 j 类的数量。对角线越亮越好 |
+| **OA** (Overall Accuracy) | 所有样本中预测正确的百分比 |
+| **AA** (Average Accuracy) | 每类准确率的平均值（对少数类更公平） |
+| **Kappa** | 比"瞎猜"好多少，Kappa=1 完美，0=运气，<0=不如瞎猜 |
+| **混淆矩阵** | N×N 表格，(i,j) = 实际 i 类被预测为 j 类的数量。对角线越亮越好 |
 
 ---
 
@@ -414,22 +486,22 @@ python test_model.py --model_path results/hybridsn_IndianPines.pth
 ```
 能工智人大作业/
 │
-├── data_loader.py          ← 数据加载、PCA 降维、DataLoader
-├── model.py                ← HybridSN + SE + 残差改进
-├── train.py                ← 训练 → 验证 → 测试 → 保存模型
-├── test_model.py           ← 加载 .pth，随机抽样测试 + 可视化
-├── visualize.py            ← 7 张图表自动生成
-├── check_env.py            ← 依赖库检查
+├── data_loader.py        ← 读 .mat → PCA → 切 patches → DataLoader
+├── model.py              ← HybridSN / HybridSN_SE / HybridSN_Res
+├── train.py              ← 训练 → 验证 → 测试 → 保存 .pth
+├── visualize.py          ← 7 张图自动生成
+├── test_model.py         ← 加载 .pth，不再训练，直接测试 + 可视化
+├── check_env.py          ← 环境依赖检查
 │
-├── data/                   ← 三个数据集
+├── data/                 ← 三个数据集（git push 时已上传）
 │   ├── Indian Pines/
 │   ├── PaviaU/
 │   └── Houston/
 │
-├── results/                ← 训练/测试输出
-│   ├── figures/            ← 可视化图表 (7 PNG)
-│   ├── *.pth               ← 模型权重（可复用）
-│   └── *_report.txt        ← 文本分类报告
+├── results/              ← 训练/测试输出
+│   ├── figures/          ← 可视化图 PNG
+│   ├── *.pth             ← 已训练模型（可直接复用）
+│   └── *_report.txt      ← 文本分类报告
 │
 ├── .gitignore
 └── README.md
@@ -439,21 +511,30 @@ python test_model.py --model_path results/hybridsn_IndianPines.pth
 
 ## ❓ 常见问题
 
+### Q: 三个模型到底训练了哪些？
+目前已训练 HybridSN 标准版 × 3 数据集（Indian Pines / PaviaU / Houston）。HybridSN_SE（注意力）和 HybridSN_Res（残差+注意力）代码已完整写好在 `model.py` 中，只需运行：
+```bash
+python train.py --model hybridsn_se --epochs 50
+python train.py --model hybridsn_res --epochs 50
+```
+
 ### Q: 训练太慢怎么办？
-- CPU：Indian Pines 约 50s/epoch，Houston 约 6s/epoch
-- 先用 `--epochs 10` 快速验证，挂机跑完整训练
-- NVIDIA 显卡可装 CUDA 版 PyTorch，快 10~30 倍
+- Indian Pines: 约 50 秒/epoch（CPU）
+- PaviaU: 约 4 分钟/epoch（42,776 样本，数据量大）
+- Houston: 约 6 秒/epoch
+- 先用 `--epochs 5` 快速验证，确认无误再挂机跑完整训练
+- NVIDIA 显卡 + CUDA 版 PyTorch 可快 10~30 倍
 
 ### Q: 训练完的模型怎么复用？
 ```bash
 python test_model.py --model_path results/hybridsn_IndianPines.pth --num_samples 10
 ```
-不需要重新训练，直接加载 `.pth` 测试。
+不需要重新训练，自动识别模型类型并加载权重。
 
-### Q: 怎么知道我冲哪个分数段？
+### Q: 怎么知道自己在冲哪个分数段？
 
-| 模型 | 分数 |
-|------|------|
-| `hybridsn` — 跑通基线 | **60** |
-| `hybridsn_se` — 加注意力 | **80** |
-| `hybridsn_res` — 加残差+注意力 | **90+** |
+| 模型 | 分数段 | 状态 |
+|------|--------|------|
+| `hybridsn` | **60** | ✅ 已训练 |
+| `hybridsn_se` | **80** | 代码就绪，待训练 |
+| `hybridsn_res` | **90+** | 代码就绪，待训练 |
