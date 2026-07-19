@@ -11,19 +11,22 @@
 
 1. [项目概览：到底做了什么](#-项目概览到底做了什么)
 2. [三个模型到底有什么区别](#-三个模型到底有什么区别)
-3. [数据集说明](#-数据集说明)
-4. [环境配置](#-环境配置)
-5. [代码文件逐个详解](#-代码文件逐个详解)
+3. [🧠 模型如何判断一个像素属于哪个类别？](#-模型如何判断一个像素属于哪个类别)
+4. [数据集说明](#-数据集说明)
+5. [环境配置](#-环境配置)
+6. [代码文件逐个详解](#-代码文件逐个详解)
    - [data_loader.py — 数据入口](#data_loaderpy--数据加载与预处理)
    - [model.py — 神经网络模型](#modelpy--三个神经网络模型)
    - [train.py — 训练脚本](#trainpy--训练与评估脚本)
    - [visualize.py — 可视化](#visualizepy--可视化模块)
    - [test_model.py — 测试脚本](#test_modelpy--加载模型直接测试)
-6. [怎么运行？](#-怎么运行)
-7. [实验结果](#-实验结果)
-8. [评估指标](#-评估指标是什么意思)
-9. [项目结构](#-项目结构)
-10. [常见问题](#-常见问题)
+   - [export_features.py — 导出 CSV 特征](#export_featurespy--导出降维特征csv)
+7. [怎么运行？](#-怎么运行)
+8. [模型保存与复用](#-模型保存与复用)
+9. [实验结果](#-实验结果)
+10. [评估指标是什么意思？](#-评估指标是什么意思)
+11. [项目结构](#-项目结构)
+12. [常见问题](#-常见问题)
 
 ---
 
@@ -39,8 +42,10 @@
 |------|------|------|
 | 神经网络模型 | **3 个** | 标准版 / 加注意力版 / 残差+注意力版 |
 | 数据集 | **3 个** | Indian Pines / Pavia University / Houston |
-| Python 代码文件 | **5 个** | 数据加载 / 模型定义 / 训练 / 可视化 / 测试 |
+| Python 代码文件 | **6 个** | 数据加载 / 模型定义 / 训练 / 可视化 / 测试 / CSV 导出 |
+| 降维方法 | **2 种** | PCA（无监督）+ LDA（有监督） |
 | 已训练模型 | **3 个 .pth** | 三个数据集的标准版均已训练完毕 |
+| 导出特征 CSV | **4 个** | IndianPines(PCA+LDA) + PaviaU(PCA) + 余下待网络环境生成 |
 
 ### 完整流程
 
@@ -48,7 +53,7 @@
 原始 .mat 文件
     │
     ▼ data_loader.py
-加载数据 → PCA 降维 → 切 patches → 标准化 → DataLoader
+加载数据 → (PCA 或 LDA) 降维 → 切 patches → 标准化 → DataLoader
     │
     ▼ model.py（构建神经网络）
 HybridSN / HybridSN_SE / HybridSN_Res
@@ -58,6 +63,9 @@ HybridSN / HybridSN_SE / HybridSN_Res
     │
     ▼ test_model.py（复用模型）
 加载 .pth → 全量评估 + 随机抽样 → 打印结果 + 生成图
+    │
+    ▼ export_features.py（导出 CSV）
+读 .mat → patches → PCA / LDA → StandardScaler → CSV 文件
 ```
 
 ---
@@ -134,6 +142,105 @@ reshape → 2D Conv → BN → ReLU → SE
 | `hybridsn` | — | 标准 3D+2D CNN | 6.30M | **60** | ✅ 已训练 |
 | `hybridsn_se` | +SE 注意力 | 自动加权通道重要性 | 6.30M | **80** | ❌ 未训练 |
 | `hybridsn_res` | +残差+SE | 残差抄近路 + 注意力 | 10.89M | **90+** | ❌ 未训练 |
+
+---
+
+## 🧠 模型如何判断一个像素属于哪个类别？
+
+这一节解释整个分类判定的数学过程——从输入一个 25×25 的小方块，到最终输出"这是玉米"或"这是森林"。
+
+### 第一步：输入 patch
+
+以某个像素为中心，切出一个 **25×25×C** 的方块（C 是 PCA 降维后的波段数，通常 30）。
+
+```
+    25×25 像素空间窗口
+    ┌─────────────────────────┐
+    │                         │
+    │      中心像素 (i,j)      │
+    │      光谱向量 [30 维]    │
+    │                         │
+    └─────────────────────────┘
+```
+
+这个 patch 包含了该像素的光谱信息（自身）和周围像素的空间上下文。
+
+### 第二步：神经网络前向传播
+
+patch 经过 HybridSN 网络的数据流：
+
+```
+(B, 30, 25, 25)   ← 一个 batch 的输入
+  → 3D Conv (7×3×3)  光谱维度滑 7 步，空间各滑 3 步
+  → 3D Conv (5×3×3)
+  → 3D Conv (3×3×3)
+  → reshape 到 2D 格式
+  → 2D Conv (3×3)
+  → Flatten（把 64×19×19 的特征图展平成 23104 维向量）
+  → FC(256) → ReLU → Dropout
+  → FC(128) → ReLU → Dropout
+  → FC(16)  ← 输出 16 个数值，每个代表该像素属于对应类别的"得分"
+```
+
+### 第三步：Softmax 把得分转为概率
+
+FC(16) 输出的 16 个数值（叫 logits）只是原始分数，不能直接当概率。Softmax 函数把它们转成 0~1 之间的概率值：
+
+```
+softmax(z_i) = e^(z_i) / Σ e^(z_j)
+
+例如：
+原始 logits:   [2.3, 0.1, -1.5, ...]
+softmax 后:    [0.62, 0.07, 0.01, ...]  ← 总和 = 1.0
+```
+
+**为什么用 Softmax？**
+- 把任意实数映射到 (0, 1)，和为 1 → 满足概率定义
+- 放大高分值和低分值的差距（指数效应）→ 最大那个会被凸显出来
+
+### 第四步：取最大值 → 最终判定
+
+```python
+predicted_class = argmax(softmax_scores)
+```
+
+对于 16 类的情况，如果类别 9 的概率最高（如 0.98），模型就判定这个像素是"大豆-免耕"。
+
+### 实际例子
+
+```
+某像素 (row=24, col=27) 经过网络后输出：
+  类别0: 0.001  类别4: 0.001  类别8: 0.001  类别12: 0.001
+  类别1: 0.001  类别5: 0.001  类别9: 0.001  类别13: 0.001
+  类别2: 0.001  类别6: 0.001  类别10:0.001 类别14: 0.945 ← 最高！
+  类别3: 0.001  类别7: 0.001  类别11:0.040 类别15: 0.001
+
+→ argmax → 类别14 → "Woods"（森林）
+→ 置信度: 94.5%
+```
+
+### Softmax + argmax 在代码中的对应
+
+```python
+# model.py — forward() 最后一行
+x = self.classifier(x)  # FC(16)  → 输出 logits
+
+# train.py — 训练时
+outputs = model(inputs)                          # 前向 → logits
+loss = criterion(outputs, labels)                # CrossEntropyLoss 自动算 softmax
+
+# train.py — 评估/预测时
+with torch.no_grad():
+    outputs = model(inputs)
+    _, preds = torch.max(outputs, 1)              # argmax → 直接得到类别
+```
+
+### 为什么准确率这么高？
+
+主要归功于**加权交叉熵损失**和**3D 卷积**：
+- **3D 卷积**同时扫描光谱维度和空间维度，能捕捉"某个波段在某个位置出现异常"的模式
+- **加权损失**让模型不敢忽略样本少的类别（否则预测"全是大豆"也能拿不错的准确率）
+- **PCA**压缩了冗余信息，让网络能集中注意力在有区分性的波段上
 
 ---
 
@@ -231,7 +338,7 @@ pip install torch torchvision numpy matplotlib scipy scikit-learn h5py
 | `matplotlib` | 画所有可视化图表 |
 | `scipy` | 读 `.mat` 文件（MATLAB v5 格式） |
 | `h5py` | 读 `.mat` 文件（MATLAB v7.3 格式，Houston 数据需要） |
-| `scikit-learn` | PCA 降维、数据划分、OA/Kappa 等评估指标 |
+| `scikit-learn` | PCA / LDA 降维、数据划分、OA/Kappa 等评估指标 |
 
 验证环境：
 
@@ -256,7 +363,7 @@ python check_env.py
   ↓ load_dataset()          读取 + 检查文件存在
   ↓ plot_data_overview()   生成 4 张数据概览图（自动调用 visualize.py）
   ↓ create_patches()       每个有标签像素切 25×25 方块，跳过背景
-  ↓ apply_pca()            光谱波段 200→30（保留 99.8% 信息）
+  ↓ apply_dim_reduce()     光谱波段降维（PCA 或 LDA）
   ↓ create_data_loaders()  分层划分(70/10/20) → StandardScaler 标准化 → DataLoader
   ↓ 返回 train/val/test 三个 DataLoader
 ```
@@ -269,6 +376,8 @@ python check_env.py
 | `pad_with_zeros(data, margin)` | 原始图像 → 外圈填 0 的图像 | 边缘像素切 patch 不会越界 |
 | `create_patches(data, gt, 25)` | 图像+标签 → `(10249, 25, 25, C)` | 跳过背景、标签重映射为 0~N-1、返回每个像素的 (row, col) |
 | `apply_pca(patches, 30)` | `(N, H, W, 200)` → `(N, H, W, 30)` | PCA 降维 |
+| `apply_lda(patches, labels, k, pca_pre=30)` | `(N, H, W, 200)` → `(N, H, W, k)` | 先 PCA→30 维中间空间，再 LDA→k 维 |
+| `apply_dim_reduce(patches, labels, method, k)` | 统一接口 | 根据 method 选择 PCA 或 LDA |
 | `create_data_loaders(...)` | patches + labels → 3 个 DataLoader + scaler | 分层采样 + StandardScaler + 类别权重计算 |
 
 #### PCA 和 LDA 两种降维方法的原理
@@ -329,7 +438,7 @@ reduced = lda.fit_transform(data_pca, labels)  # 需要标签！
 **为什么 LDA 在数据中要做两步（先 PCA 再 LDA）？**
 原始 patches 展平后是 `25×25×C` 维——以 Indian Pines 为例就是 `25×25×200 = 125,000` 维。
 这个维度远远超过可用内存（会导致 NumPy 申请 9.55 GiB 数组）。所以本项目实现中先用 PCA 降到
-100 维（中间维度），再在这个低维空间做 LDA。
+30 维（中间维度），再在这个低维空间做 LDA。
 
 **Pro**: 利用标签信息，降维结果直接优化分类目标
 
@@ -404,7 +513,7 @@ def forward(self, x):
 
 ```
 步骤 1: 加载数据
-  调用 data_loader 的函数：load_dataset → plot_data_overview → create_patches → apply_pca → create_data_loaders
+  调用 data_loader 的函数：load_dataset → plot_data_overview → create_patches → apply_dim_reduce → create_data_loaders
 
 步骤 2: 创建模型
   MODEL_MAP = {"hybridsn": HybridSN, "hybridsn_se": HybridSN_SE, "hybridsn_res": HybridSN_Res}
@@ -435,7 +544,7 @@ class_weights = 1.0 / counts        # 小类权重大
 criterion = nn.CrossEntropyLoss(weight=class_weights)
 ```
 
-为什么？Indian Pines 里"燕麦"只有 20 个样本，"大豆-少耕"有 2455 个。不加权的话，模型预测"一切都是大豆"就能拿到高准确率，其他小类全废了。加权让小类犯错罚得更重。
+为什么？Indian Pines 里"燕麦"只有 20 个样本，"大豆-少耕"有 2,455 个。不加权的话，模型预测"一切都是大豆"就能拿到高准确率，其他小类全废了。加权让小类犯错罚得更重。
 
 **ReduceLROnPlateau**：监控 val_loss，如果连续 10 轮不降，学习率自动减半。帮助模型在接近最优时精细搜索。
 
@@ -445,8 +554,8 @@ criterion = nn.CrossEntropyLoss(weight=class_weights)
 |------|------|------|
 | `--dataset` | IndianPines | IndianPines / PaviaU / Houston |
 | `--model` | hybridsn | hybridsn / hybridsn_se / hybridsn_res |
-| `--pca` | 30 | 降维后维度数（PCA或LDA） |
 | `--reduce` | pca | 降维方法 (pca=无监督, lda=有监督) |
+| `--pca` | 30 | 降维后维度数（PCA或LDA） |
 | `--window_size` | 25 | Patch 大小 |
 | `--epochs` | 100 | 训练轮数 |
 | `--batch_size` | 32 | 批大小 |
@@ -468,7 +577,7 @@ criterion = nn.CrossEntropyLoss(weight=class_weights)
 | 4 | `04_pca_variance.png` | PCA 累计方差曲线（标注 99% 线和降维维度） | 同上 |
 | 5 | `05_training_curves.png` | 训练/验证 Loss + Accuracy 双曲线（标注最佳 epoch） | `plot_training_results()` ← `train.py` |
 | 6 | `06_confusion_matrix.png` | 归一化混淆矩阵 + 各类准确率柱状图 | 同上 |
-| 7 | `07_classification_map.png` | 真值/预测/正确-错误对照 + 图例 | 同上 |
+| 7 | `07_classification_map.png` | 真值/预测/正确错误对照 + 图例 | 同上 |
 
 ---
 
@@ -505,6 +614,24 @@ python test_model.py --model_path results/hybridsn_IndianPines.pth --num_samples
 
 ---
 
+### `export_features.py` — 导出降维特征 CSV
+
+> **一句话**：对所有数据集分别做 PCA 和 LDA 降维，再 StandardScaler 标准化，输出可直接用于计算的 CSV 文件。
+
+```bash
+python export_features.py
+```
+
+**处理流程**：
+
+```
+.mat 文件 → create_patches() → apply_pca() 或 apply_lda()→取中心像素→StandardScaler→CSV
+```
+
+每个 CSV 最后一列为 `label`（从 0 开始的类别编号），前列为 `f0, f1, ..., fk` 特征列（均值为 0，标准差为 1）。
+
+---
+
 ## 🚀 怎么运行？
 
 ### 训练
@@ -519,9 +646,8 @@ python train.py --model hybridsn_se --epochs 50
 # 90+ 分：残差 + 注意力
 python train.py --model hybridsn_res --epochs 50
 
-# 不同数据集（Houston 需要 --pca 20）
-python train.py --dataset Houston --pca 20 --epochs 100
-python train.py --dataset PaviaU --epochs 100
+# 使用 LDA 降维替代 PCA（仅限小数据集）
+python train.py --model hybridsn --reduce lda --pca 15 --epochs 10
 ```
 
 ### 测试（加载模型，不重训）
@@ -539,11 +665,19 @@ python visualize.py       # 可视化模块独立测试
 python check_env.py       # 依赖库检查
 ```
 
+### 导出 CSV
+
+```bash
+python export_features.py
+```
+
+输出的 CSV 位于 `results/csv/`，包含 `IndianPines_pca.csv`, `IndianPines_lda.csv`, `PaviaU_pca.csv` 等。
+
 ---
 
 ## 📊 实验结果
 
-### 三数据集对比（HybridSN 标准版）
+### 三数据集对比（HybridSN 标准版，PCA 降维）
 
 | 数据集 | 尺寸 | 波段 | 类别 | OA | AA | Kappa | Epoch |
 |--------|------|------|------|-----|------|-------|-------|
@@ -608,11 +742,12 @@ python check_env.py       # 依赖库检查
 ```
 能工智人大作业/
 │
-├── data_loader.py        ← 读 .mat → PCA → 切 patches → DataLoader
+├── data_loader.py        ← 读 .mat → PCA/LDA → 切 patches → DataLoader
 ├── model.py              ← HybridSN / HybridSN_SE / HybridSN_Res
 ├── train.py              ← 训练 → 验证 → 测试 → 保存 .pth
 ├── visualize.py          ← 7 张图自动生成
 ├── test_model.py         ← 加载 .pth，不再训练，直接测试 + 可视化
+├── export_features.py    ← 导出 PCA/LDA 降维 + StandardScaler 标准化 CSV
 ├── check_env.py          ← 环境依赖检查
 │
 ├── data/                 ← 三个数据集（git push 时已上传）
@@ -621,6 +756,7 @@ python check_env.py       # 依赖库检查
 │   └── Houston/
 │
 ├── results/              ← 训练/测试输出
+│   ├── csv/              ← 导出的 CSV 特征文件
 │   ├── figures/          ← 可视化图 PNG
 │   ├── *.pth             ← 已训练模型（可直接复用）
 │   └── *_report.txt      ← 文本分类报告
@@ -640,23 +776,25 @@ python train.py --model hybridsn_se --epochs 50
 python train.py --model hybridsn_res --epochs 50
 ```
 
-### Q: 训练太慢怎么办？
-- Indian Pines: 约 50 秒/epoch（CPU）
-- PaviaU: 约 4 分钟/epoch（42,776 样本，数据量大）
-- Houston: 约 6 秒/epoch
-- 先用 `--epochs 5` 快速验证，确认无误再挂机跑完整训练
-- NVIDIA 显卡 + CUDA 版 PyTorch 可快 10~30 倍
-
 ### Q: 训练完的模型怎么复用？
 ```bash
 python test_model.py --model_path results/hybridsn_IndianPines.pth --num_samples 10
 ```
 不需要重新训练，自动识别模型类型并加载权重。
 
-### Q: 怎么知道自己在冲哪个分数段？
+### Q: 怎么知道我冲哪个分数段？
 
 | 模型 | 分数段 | 状态 |
 |------|--------|------|
 | `hybridsn` | **60** | ✅ 已训练 |
 | `hybridsn_se` | **80** | 代码就绪，待训练 |
 | `hybridsn_res` | **90+** | 代码就绪，待训练 |
+
+### Q: 如何得到降维后的特征 CSV？
+```bash
+python export_features.py
+```
+每个数据集针对 PCA 和 LDA 各生成一个 CSV，位于 `results/csv/`。特征列 `f0..fk` 已标准化，最后一列为标签。可直接用于后续机器学习模型。
+
+### Q: 怎么判定一个像素属于哪个类别？（完整流程）
+见 [🧠 模型如何判断一个像素属于哪个类别？](#-模型如何判断一个像素属于哪个类别) 章节，包含从输入 patch 到 Softmax+argmax 输出的完整数学过程。
