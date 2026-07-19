@@ -15,7 +15,7 @@ from sklearn.metrics import (
     classification_report
 )
 
-from data_loader import load_dataset, create_patches, apply_pca, create_data_loaders
+from data_loader import load_dataset, create_patches, apply_pca, create_data_loaders, HyperSpectralDataset
 from model import HybridSN, HybridSN_SE, HybridSN_Res
 from visualize import plot_data_overview, plot_training_results
 
@@ -221,9 +221,24 @@ def main(args):
 
     os.makedirs(args.output_dir, exist_ok=True)
 
+    # ---- 全量预测（用于完整分类结果图） ----
+    print("\n  生成完整分类结果图...")
+    from torch.utils.data import DataLoader
+    full_dataset = HyperSpectralDataset(patches, labels)  # 全量标准化后的数据
+    full_loader = DataLoader(full_dataset, batch_size=args.batch_size, shuffle=False)
+    model.eval()
+    full_preds = []
+    with torch.no_grad():
+        for inputs, _ in full_loader:
+            inputs = inputs.to(device)
+            outputs = model(inputs)
+            _, batch_preds = torch.max(outputs, 1)
+            full_preds.extend(batch_preds.cpu().numpy())
+    full_preds = np.array(full_preds)
+
     # ---- 训练结果可视化 ----
     fig_dir = os.path.join(args.output_dir, "figures")
-    plot_training_results(history, cm, preds, gt, all_positions, num_classes,
+    plot_training_results(history, cm, full_preds, gt, all_positions, num_classes,
                           fig_dir)
 
     # 保存模型
