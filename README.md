@@ -295,6 +295,52 @@ print(np.unique(gt))                              # → [0 1 2 3 ... 16]
 | **Pavia University** | 610×340 | 103 | 9 | 42,776 | 意大利帕维亚大学，ROSIS 传感器 |
 | **Houston** | 210×954 | 48 | 7 | 2,530 | 休斯顿大学 + NASA，CASI 传感器 |
 
+#### 各数据集标签对照
+
+**Indian Pines (16 类)**
+| 标签 | 英文名称 | 中文含义 |
+|------|----------|----------|
+| 1 | Alfalfa | 苜蓿 |
+| 2 | Corn-notill | 玉米-免耕 |
+| 3 | Corn-mintill | 玉米-少耕 |
+| 4 | Corn | 玉米 |
+| 5 | Grass-pasture | 草地-牧场 |
+| 6 | Grass-trees | 草地-树木 |
+| 7 | Grass-pasture-mowed | 草地-修剪 |
+| 8 | Hay-windrowed | 干草堆 |
+| 9 | Oats | 燕麦 |
+| 10 | Soybean-notill | 大豆-免耕 |
+| 11 | Soybean-mintill | 大豆-少耕 |
+| 12 | Soybean-clean | 大豆-清理 |
+| 13 | Wheat | 小麦 |
+| 14 | Woods | 森林 |
+| 15 | Buildings-Grass-Trees-Drives | 建筑-草地-树木-道路 |
+| 16 | Stone-Steel-Towers | 石头-铁塔 |
+
+**Pavia University (9 类)**
+| 标签 | 英文名称 | 中文含义 |
+|------|----------|----------|
+| 1 | Asphalt | 沥青路面 |
+| 2 | Meadows | 草地 |
+| 3 | Gravel | 碎石 |
+| 4 | Trees | 树木 |
+| 5 | Painted metal sheets | 涂漆金属板 |
+| 6 | Bare Soil | 裸土 |
+| 7 | Bitumen | 柏油 |
+| 8 | Self-Blocking Bricks | 自锁砖 |
+| 9 | Shadows | 阴影 |
+
+**Houston (7 类)**
+| 标签 | 英文名称 | 中文含义 |
+|------|----------|----------|
+| 1 | Grass Healthy | 健康草地 |
+| 2 | Grass Stressed | 受胁迫草地 |
+| 3 | Trees | 树木 |
+| 4 | Water | 水域 |
+| 5 | Residential | 居民区 |
+| 6 | Commercial | 商业区 |
+| 7 | Road | 道路 |
+
 ### 数据格式
 
 所有数据以 MATLAB `.mat` 格式存储。有两个文件：
